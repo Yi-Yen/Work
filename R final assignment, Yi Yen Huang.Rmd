@@ -1,0 +1,495 @@
+---
+title: "Final assignment"
+author: "Yi Yen Huang"
+output:
+  html_document:
+    df_print: paged
+  pdf_document: default
+---
+
+```{r,include = FALSE}
+chooseCRANmirror(graphics=FALSE, ind=1)
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+library(car)
+library(haven)
+library(psych)
+library(tinytex)
+library(moments)
+library(visdat)
+library(dplyr)
+library(scales)
+```
+#Research Question
+#what is the relationship between the percentage of teachers’ in-school professional-collaborative-learning and
+#the frequency of the implementation of cognitive-activation teaching strategies?
+
+#Data Reading and Data Wrangling
+#In this report, I use TALIS 2013 dataset.
+#To read the data I used the haven package as follows:
+#Reading the PISA2018 dataset
+```{r}
+df <- read_sas("/Users/elainehuang/Documents/R, personal/ttgallt2.sas7bdat")
+```
+#Data subsetting
+#Now I can start subsetting the relevant questions from the TALIS 2013 questionnaire.
+#The relevant variables are:
+# - Teaching in General/ How often do you/ collaboration (8 items)
+# - Your Teaching/ How often happens/ cognitive teaching (3 items)
+# - Relevant demographics (gender, age, current employment status)
+
+#Creating a subset with the variables of interest
+```{r}
+df1 <- df %>% select(IDCNTRY,IDTEACH, TT2G01,TT2G02, TT2G03, #CountryID, TeacherID, Gender, Age, employment status
+                     TT2G33A: TT2G33H, #How often do you collaborate
+                     TT2G42A:TT2G42H) #How often do cognitive teaching happens
+```
+#Saving the dataset to not have it to the big one each time.
+
+#Next I filtered by the countries.
+#In this report, I focus on Korea and Denmark.
+#After that I re-code their IDs to names.
+
+#Filtering by country
+```{r}
+df1 <- df %>%
+  filter(IDCNTRY == 410 | IDCNTRY == 208)
+```
+#Recode country IDs to names. Because of conflicts in the recode command between dplyr
+#and car package, I specified which to use.
+```{r}
+df1$IDCNTRY <- df1$IDCNTRY %>%
+as.factor %>%
+dplyr::recode(`410` = "Korea",
+`208` = "Denmark")
+```
+#Recode the name of the Gender column and the values from 1 to female teacher, and 2 to male teacher
+
+```{r}
+df1 <- df1 %>%
+  rename(gender = TT2G01)
+df1$gender <- df1$gender %>%
+  as.factor %>%
+  dplyr::recode(`1` = "Female",
+                `2` = "Male")
+```
+#Recode the group name of age.
+```{r}
+df1 <- df1 %>%
+  rename(age = TT2G02)
+```
+#Recode the name of status of employment column and the values
+#1 = Full-time (more than 90% of full-time hours)
+#2 = Part-time (71-90% of full-time hours)
+#3 = Part-time (50-70% of full-time hours)
+#4 = Part-time (less than 50% of full-time hours)
+```{r}
+df1 <- df1 %>%
+  rename(employ_status = TT2G03)
+df1$employ_status <- df1$employ_status %>%
+  as.factor %>%
+  dplyr::recode(`1` = "Full-time (more than 90% of full-time hours)",
+                `2` = "71-90% of full-time hours",
+                `3` = "50-70% of full-time hours",
+                `4` = "less than 50% of full-time hours")
+```
+#Preparing Variables
+#Recode the group name of frequency of teachers collaboration.
+#In this variable 1 = never,
+#2 = Once a year or less,
+#3 = 2-4 times a year,
+#4 = 5-10 times a year,
+#5 = 1-3 times a month, and
+#6 = Once a week or more
+```{r}
+df1 <- df1 %>%
+  rename(collaboration = TT2G33A:TT2G33H)
+```
+#Recode the group name of frequency of cognitive-activation teaching.
+#In this variable 1 = Never or almost never,
+#2 = Occasionally,
+#3 = Frequently,
+#4 = In all or nearly all lessons
+```{r}
+df1 <- df1 %>%
+  rename(cog_active = c(TT2G42B, TT2G42G, TT2G42H))
+```
+#Recode the NA values to 0, might be missing values
+```{r}
+df1$collaboration1[is.na(df1$collaboration1)] <- 0
+df1$collaboration2[is.na(df1$collaboration2)] <- 0
+df1$collaboration3[is.na(df1$collaboration3)] <- 0
+df1$collaboration4[is.na(df1$collaboration4)] <- 0
+df1$collaboration5[is.na(df1$collaboration5)] <- 0
+df1$collaboration6[is.na(df1$collaboration6)] <- 0
+df1$collaboration7[is.na(df1$collaboration7)] <- 0
+df1$collaboration8[is.na(df1$collaboration8)] <- 0
+```
+#Recode the NA values to 0, might be missing values
+```{r}
+df1$cog_active1[is.na(df1$cog_active1)] <- 0
+df1$cog_active2[is.na(df1$cog_active2)] <- 0
+df1$cog_active3[is.na(df1$cog_active3)] <- 0
+```
+
+#Finally, I named the final data set df_final to make it easier to use, and saved it in a CSV file to make it
+#easier to reload if needed.
+#Saving the data set as the final one:
+```{r}
+df_final <- df1
+write.csv2(df_final, file = "~/Documents/df_final.csv")
+```
+
+#Visualizing the data
+
+#How often do teachers collaborate?
+#First, I wanted to visualize the frequency of teachers collaboration per country,
+#which gives us an overview of trends and skewness of each country’s frequency of collaboration.
+
+#However, result from the factor "collaboration" come with eight questions, the visulization will be more complicated.
+#Later on I will test the internal consistency with Cronbach alpha.
+#If the Cronbach alpha value is acceptable, then I can use the mean of these eight questions to analysize further.
+#But at this moment, I only visulize the first question which is the frequency of teaching jointly.
+
+
+```{r}
+library(ggplot2)
+```
+
+```{r}
+ggplot(df1, aes( x = collaboration1))+
+  facet_wrap(.~IDCNTRY, nrow(2)) +
+  geom_bar(position = "dodge", fill=rgb(0.2,0.4,0.6,0.6)) +
+  theme_classic() +
+  ggtitle("Barplot of Teach jointly as a team in the same class per Country") +
+  ylab("count") +
+  xlab("Teach jointly as a team in the same class") +
+  theme(axis.title.x = element_text(face="bold", size = 12),
+        axis.title.y = element_text(face="bold", size = 12))
+```
+
+#The barplot tells us that generally Korean teachers teach jointly less than Danish teachers.
+#Danish teachers teach jointly more frequently which is mostly once a week or more.
+#Second, I used bar plots to visualize jointly teaching per country per gender, this may show some additional
+#differences or interesting information.
+
+```{r}
+ggplot(df1, aes(x = collaboration1, fill = gender))+
+  facet_wrap(.~IDCNTRY, nrow(2)) +
+  geom_bar( position = "dodge") +
+  ggtitle("Barplot of Teach jointly as a team in the same class per Country") +
+  theme_classic() +
+  ylab("Count") +
+  xlab("Teach jointly as a team in the same class") +
+  theme(axis.title.x = element_text(face="bold", size = 12),
+        axis.title.y = element_text(face="bold", size = 12))
+```
+#This barplot shows that, in general, female teachers of both countries jointly teach more often than male teachers.
+#We can convince this by looking at means and medians of each country per gender.
+
+```{r}
+df1%>%
+  group_by(Country = as_factor(IDCNTRY), Gender = as_factor(gender)) %>%
+  summarise_at(vars(collaboration1),
+               list(Mean = mean, Median = median), na.rm = TRUE)
+```
+#With the result again shows that female teachers work jointly more often in both two countries.
+#These differences are even lager in Denmark,
+#where the differences of the mean in Denmark is 0.37 and that in Korea is 0.06.
+#Next, we can also visualize them if the data is similarly distributed between countries with a boxplot.
+```{r}
+ggplot(df1, aes(y = collaboration1, x= IDCNTRY)) +
+  geom_boxplot(fill = c("#00AFBB")) +
+  theme_classic() +
+  ggtitle("Boxplot of teaching jointly per Country") +
+  ylab("how often of teaching jointly") +
+  xlab("Country") +
+  theme(axis.title.x = element_text(face="bold", size = 12),
+        axis.title.y = element_text(face="bold", size = 12))
+```
+
+#Here the boxplot shows that Danish teachers teach jointly more often than Korean teachers.
+```{r}
+ggplot(df1, aes(y = collaboration1, x= gender)) +
+  facet_wrap(.~IDCNTRY) +
+  geom_boxplot(fill = c("#00AFBB")) +
+  theme_classic() +
+  ggtitle("Barplot of teaching jointly per Country, per Gender") +
+  ylab("how often of teaching jointly") +
+  xlab("Gender") +
+  theme(axis.title.x = element_text(face="bold", size = 12),
+        axis.title.y = element_text(face="bold", size = 12))
+```
+#With the boxpolt, we can see that there is almost no difference between two genders of Korean teachers when it comes to teach jointly.
+#For Danish teachers, the dispertion of male teachers seems wider.
+#To further visualize how the female and male teachers spread while they teach jointly, we can do
+#a conditional probability density plot.
+```{r}
+ggplot(df1, aes( x = collaboration1, fill = gender)) +
+  facet_wrap(.~IDCNTRY) +
+  geom_density(adjust = 2.5, position = "fill") +
+  scale_fill_manual(values = c("#3ccbf4", "#75aadb")) +
+  theme_classic() +
+  ggtitle("Conditional Probability Plot of teaching jointly per Country,per Gender") +
+  ylab("Probability") +xlab("teaching jointly") +
+  theme(axis.title.x = element_text(face="bold", size = 12),
+        axis.title.y = element_text(face="bold", size = 12))
+```
+#In both country, higher teaching collaboration comes with female teachers.
+
+#Next, I want to know the condition of jointly teaching by employment status.
+```{r}
+ggplot(df1, aes( x = collaboration1, fill = employ_status))+
+  geom_bar(position = "dodge") +
+  ggtitle("Barplot of Teach jointly as a team in the same class by employment status") +
+  theme_classic() +
+  ylab("Count") +
+  xlab("Teach jointly as a team in the same class") +
+  theme(axis.title.x = element_text(face="bold", size = 12),
+        axis.title.y = element_text(face="bold", size = 12))
+```
+#Compared to part-time employment, It seems that most of teachers in the two countries are full-time employed.
+#Yet, it is not clear of the correlation between status of employment  and the frequency of teaching jointly.
+
+#Now let's check the distribution of each country.
+```{r}
+ggplot(df1, aes( x = collaboration1, fill = employ_status))+
+  facet_wrap(.~IDCNTRY, nrow(2)) +
+  geom_bar(position = "dodge") +
+  ggtitle("Barplot of Teach jointly as a team in the same class per Country by employment status") +
+  theme_classic() +
+  ylab("Count") +
+  xlab("Teach jointly as a team in the same class") +
+  theme(axis.title.x = element_text(face="bold", size = 12),
+        axis.title.y = element_text(face="bold", size = 12))
+```
+#The barplot shows that the frequency by employment status are very unlikely in the two country.
+#The boxplot shows that Korean full-time employed teachers are most probably never teaching jointly.
+#For Danish full-time employed teachers are the most possible population to teach jointly once or more per week.
+
+#We can also check the mean and median of each status.
+```{r}
+df1 %>%
+  group_by(Country = as_factor(IDCNTRY), Employment_status =as_factor(employ_status)) %>%
+  summarise_at(vars(collaboration1),
+               list(Mean = mean, Median = median), na.rm = TRUE)
+```
+#From this table, it seems generally Danish teachers teach jointly moreo ften than Korean teachers results from the higher mean values.
+#Concerned with employment status, the distribution of frequency is more even in Danmark but not so in Korea.
+#Moreover, it is interesting that the group of most often teaching jointly is those who work less than 50% full hours, in Korea.
+#However, there are also a quite portion of non-ignorable missing values.
+
+```{r}
+ggplot(df1, aes(y = collaboration1, x= employ_status)) +
+  facet_wrap(.~IDCNTRY) +
+  geom_boxplot(fill = c("#00AFBB")) +
+  theme_classic() +
+  ggtitle("Barplot of teaching jointly per Country, per employ status") +
+  ylab("teaching jointly") +
+  xlab("employment status") +
+  theme(axis.title.x = element_text(face="bold", size = 12),
+        axis.title.y = element_text(face="bold", size = 12))
+```
+#The distribution of Korean teachers is quite interesting.
+#As a result the further research can dig deeper into Korean teachers independently.
+#To further visualize how the employment status populations are distributed between teaching jointly, we can do a conditional probability density plot.
+```{r}
+ggplot(df1, aes( x = collaboration1, fill = employ_status)) +
+  facet_wrap(.~IDCNTRY) +
+  geom_density(adjust = 2.5, position = "fill") +
+  scale_fill_manual(values = c("#3ccbf4", "#75aadb", "green", "blue")) +
+  theme_classic() +
+  ggtitle("Conditional Probability Plot of teaching jointly per Country,per employment status") +
+  ylab("Probability") +
+  xlab("teaching jointly") +
+  theme(axis.title.x = element_text(face="bold", size = 12),
+        axis.title.y = element_text(face="bold", size = 12))
+```
+#Again, the distribution in Danmark is more evenly.
+#In Korea is not even and far from linear association.
+
+#Next I want to visualize the frequency of Students work in small groups to come up with a joint solution to a problem
+```{r}
+ggplot(df1, aes( x = cog_active1))+
+  facet_wrap(.~IDCNTRY, nrow(2)) +
+  geom_density(adjust = 3.5, fill="#ff7733") +
+  theme_classic() +
+  ggtitle("Density Plot of student work jointly per Country") +
+  ylab("Population Percentage") +
+  xlab("Student work jointly to solve problems") +
+  theme(axis.title.x = element_text(face="bold", size = 12),
+        axis.title.y = element_text(face="bold", size = 12))
+```
+#Then I want to know more about the differences by gender
+```{r}
+ggplot(df1, aes( x = cog_active1, fill = gender))+
+  facet_wrap(.~IDCNTRY, nrow(2)) +
+  geom_density(adjust = 3.5, alpha = .3) +
+  theme_classic() +
+  ggtitle("Density Plot of student work jointly per Country per gender") +
+  ylab("Population Percentage") +
+  xlab("Student work jointly to solve problems") +
+  theme(axis.title.x = element_text(face="bold", size = 12),
+        axis.title.y = element_text(face="bold", size = 12))
+```
+#The density plot show that in Denmark the gender is not so obvious difference.
+#In Korea, male teachers seem more possible to never let student work jointly,
+#and female teachers show more possibilities to let student work jointly frequently.
+#In Denmark, the differences between genders seem to be very small.
+#I will calculate the mean, median, and skewness to have more information.
+
+```{r}
+df1 %>%
+  group_by(Country = as_factor(IDCNTRY), Gender = as_factor(gender)) %>%
+  summarise_at(vars(cog_active1),
+               list(Mean = mean, Median = median, Skewness = skewness),
+               na.rm = TRUE)
+```
+#The Mean value of Denmark is higher than Koreas, which means Danish students work jointly more often than Korean students.
+#To know the different between gender in each country, I am gonna use t-test.
+#And beforehand, check the homogeneity of variance by LeveneTest.
+```{r}
+LeveneTest_cog_active1_country <-leveneTest(cog_active1~as_factor(IDCNTRY), df1)
+LeveneTest_cog_active1_country
+```
+#P=0.232, this case does not meet the homogeneity of variance.
+##Unfortunately
+
+```{r}
+t.test_cog_active1_country <- t.test(cog_active1~as_factor(IDCNTRY),
+                                     data = df1,
+                                     alternative = "two.sided",
+                                     var.equal = FALSE) # Homogeneity of variance not assumed
+t.test_cog_active1_country
+```
+#mean in group Denmark is 2.462388, mean in group Korea is 1.797136.
+#t(6163.7)=25.367, P<.05
+#The difference between two countries is significant.
+#Overall, the mean value of Denmark is higher than Koreas.
+#Nevertheless, to test two countries separately is better to analysis the gender and employment status.
+#Finally, I will do a quantile-quantile plot, or Q-Q plot to have a last complementary analyses that will tell
+#us how much the data is normally distributed or not.
+```{r}
+ggplot(df1, aes(sample = cog_active1)) +
+  stat_qq() +
+  stat_qq_line() +
+  theme_classic() +
+  ggtitle("Q-Q Plot of students working jointly per country") +
+  ylab("Sample Quantiles") +
+  xlab("Normal Theoretical Quantiles") +
+  theme(axis.title.x = element_text(face="bold", size = 12),
+        axis.title.y = element_text(face="bold", size = 12))
+```
+#In this plot we can visualize the skewness analysis that was previously calculated.
+#The staircase pattern is present because of the limited amount of values in our sample, which go from 0 to 4 as discrete values. 
+#The values that go from y = (0, 2, 3, 4)are mostly on the 45° slope, only the y = 1 deviate from the slope.
+#Overall, the data is sightly left skewed.
+#The data is not normally distributed.
+
+#Relationship between teachers teaching jointly and students learning jointly
+#First, I visualize the relationship between the two variables with a scatter plot and a regression line to
+#see if there is a correlation, separating results between genders, as we have seen they have had differences in their results.
+```{r}
+ggplot(df1, aes(y = cog_active1, x = collaboration1)) +
+  facet_wrap(.~IDCNTRY, nrow(2)) +
+  geom_jitter(width = 0.1, height = 0.5, alpha = 0.4, size = 0.3, shape =2) +
+  geom_point(size = 1) +
+  geom_smooth(method = "lm") +
+  coord_cartesian(expand = FALSE) +
+  ggtitle("Scatter Plot of teaching jointly and learning jointly by country") +
+  theme_classic() +
+  ylab("students work jointly") +
+  xlab("teachers teach jointly") +
+  theme(axis.title.x = element_text(face="bold", size = 12),
+        axis.title.y = element_text(face="bold", size = 12))
+```
+#It seems that Korean teachers tend to have a positive correlation, where more often teach jointly 
+#may come with more often students work jointly as well.
+#In Denmark, there is also slightly positive relationship but not that obvious as Korea.
+#I’m going to check for gender to see if I can identify any difference.
+```{r}
+ggplot(df1, aes(y = cog_active1, x = collaboration1, color = gender))+
+  facet_wrap(.~IDCNTRY, nrow(2)) +
+  geom_jitter(width = 0.1, height = 0.5, alpha = 0.4, size = 0.3, shape =2) +
+  geom_point(size = 1) +
+  geom_smooth(method = "lm") +
+  coord_cartesian(expand = FALSE) +
+  theme_classic() +
+  ggtitle("Scatter Plot of teaching jointly and learning jointly by country") +
+  ylab("students work jointly") +
+  xlab("teachers teach jointly") +
+  theme(axis.title.x = element_text(face="bold", size = 12),
+        axis.title.y = element_text(face="bold", size = 12))
+```
+#This scatterplot tells us there are both correlation in Denmark and Korea
+#There is also differences between males and females.
+#Inferential Data Analysis
+#By analyzing a linear regression model to test if there is a relationship between the two variables
+```{r}
+LM_Test <- lm(cog_active1~collaboration1, df1)
+output <- summary(LM_Test)
+output
+```
+#The model suggests there is a relationship between the two variables where, for every additional point in
+#teaching jointly, students working jointly increases 0.114493.
+#p = .000, reject the null hypothesis.
+#Therefore, there is statistic significance  between teaching jointly and student working jointly.
+
+#My research question is
+#what is the relationship between the frequency of teachers’ in-school professional-collaborative-learning and the frequency of the implementation of cognitive-activation teaching strategies?
+
+#The frequency of teacher collaboration is measured by means of eight items (e.g., “Teaching in General/ How often do you/ collaboration”) using a 6-point Likert scale (i.e., 1 - never, 6 - Once a week or more). 
+#Thus, lower scores in these scales reflect less collaboration, whereas higher scores capture more collaboration.
+#I will first assess the internal consistency of the scale by computing cronbach alpha value between the eight items. 
+#I can do this by using the alpha() function from the psych package:
+
+```{r}
+df_collaboration <- df1 %>% 
+  select(collaboration1,collaboration2,collaboration3,collaboration4,collaboration5,collaboration6,collaboration7,collaboration8) %>%as.data.frame() 
+
+psych::alpha(df_collaboration)
+
+```
+#A Cronbach’s alpha of 0.87 is quite acceptable.
+#Therefore, we could assume that the eight items produce similar scores and that they are a reliable instrument for assessing the same construct.
+
+#Hence, I could compute an average score of attitudes toward school performance (i.e., Collaboration) by #calculating the mean of the eight items. I will use the function rowMeans() to calculate the mean of the
+#values of different columns in the dataset.
+
+```{r}
+mean_collaboration <- rowMeans(df_collaboration[,1:8],na.rm = TRUE)
+```
+
+#Similarly, the frequency of teacher use cognitive-activation strategies is measured by means of three items (e.g., “Your Teaching/ How often happens/ cognitive teaching”) using a 4-point Likert scale (i.e., 1 - Never or almost never, 4 - In all or nearly all lessons). 
+```{r}
+df_cog_active <- df1 %>% select(cog_active1,cog_active2,cog_active3) %>% 
+  as.data.frame() 
+
+psych::alpha(df_cog_active)
+```
+#A Cronbach’s alpha of 0.87 is quite acceptable.
+#Therefore, I could assume that the three items produce similar scores and that they are a reliable instrument for assessing the same construct.
+#Hence, I could compute an average score of attitudes toward school performance (i.e., Collaboration) by #calculating the mean of the eight items. I will use the function rowMeans() to calculate the mean of the
+#values of different columns in the dataset.
+
+
+```{r}
+mean_cog_active <- rowMeans(df_cog_active[,1:3])
+```
+
+#I have examed the internal consistency of collaboration and cognitive-activation so now I can check if there is the linear correlation between each other.
+```{r}
+LM_Test_group <- lm(mean_cog_active~mean_collaboration, df1)
+output <- summary(LM_Test_group)
+output
+```
+#The model suggests that there is a statistically significant positive relationship between the frequency of teacher collaboration and the implement  frequency of cognitive-activation (b = 1.06, t(8182) = 33.61, p < .001. This is, the more often the teachers collaborate, the higher frequency that they teach with cognitive-activation strategies.
+
+#Conclusion
+#I am very glad that I can use R to find some clues to myresearch questions! Pretty enjoy it.
+#Next, I would love to learn about SEM.
+#I believev it will be fun!
+
